@@ -28,6 +28,7 @@ function activate(context) {
   const bars = {};
   const debugConfigs = new Map();
   let projects = [];
+  let projectErrors = [];
   let devices = { probes: [], ports: [] };
   let scan;
   let busy;
@@ -97,16 +98,20 @@ function activate(context) {
 
   async function refresh(show = false, detect = true) {
     const found = [];
+    const errors = [];
     for (const folder of vscode.workspace.workspaceFolders || []) {
       if (folder.uri.scheme !== 'file') continue;
       try {
         const project = await loadProject(folder);
         if (project) found.push(project);
       } catch (error) {
-        if (show) output.appendLine(error.message);
+        const message = `${folder.name}: ${error.message}`;
+        errors.push(message);
+        if (show) output.appendLine(message);
       }
     }
     projects = found;
+    projectErrors = errors;
     if (detect && projects.length) {
       scan ||= exec('powershell.exe', windowsScript, {
         encoding: 'utf8', windowsHide: true, timeout: 10000,
@@ -130,7 +135,7 @@ function activate(context) {
   async function chooseProject() {
     const current = projectForEditor();
     if (current) return current;
-    if (!projects.length) throw new Error('请打开包含 .ioc 和 Makefile 的工程文件夹（首版支持 F103C8T6 / F407ZGT6 / F407VGT6）。');
+    if (!projects.length) throw new Error(projectErrors[0] || '请打开包含 .ioc 和 Makefile 的 STM32 工程文件夹。');
     return (await vscode.window.showQuickPick(projects.map(project => ({
       label: project.folder.name, description: project.model, project
     })), { placeHolder: '选择 STM32 工程' }))?.project;
@@ -212,9 +217,9 @@ function activate(context) {
     assertDebuggerIdle();
     const probe = await probeForAction(project);
     if (!probe) return;
-    if (project.chip.config === 'stm32f4x') {
+    if (project.chip.config === 'stm32f4x' || project.chip.config.startsWith('stm32h7x')) {
       const proceed = await vscode.window.showWarningMessage(
-        `请确认实际接的是 ${project.model}。SWD 无法区分这两种 F407 封装。`,
+        `请确认实际接的是 ${project.model}。SWD 校验只能核对芯片组和 Flash 容量，不能确认完整料号。`,
         { modal: true }, '确认烧录');
       if (proceed !== '确认烧录') return;
     }

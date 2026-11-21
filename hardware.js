@@ -1,11 +1,6 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
-
-const chips = {
-  STM32F103C8T6: { config: 'stm32f1x', id: 0x410, flashAddress: '0x1ffff7e0', kib: 64 },
-  STM32F407ZGT6: { config: 'stm32f4x', id: 0x413, flashAddress: '0x1fff7a22', kib: 1024 },
-  STM32F407VGT6: { config: 'stm32f4x', id: 0x413, flashAddress: '0x1fff7a22', kib: 1024 }
-};
+const { resolveChip } = require('./chips');
 
 async function loadProject(folder) {
   const cwd = folder.uri.fsPath;
@@ -13,9 +8,12 @@ async function loadProject(folder) {
   if (!files.length) return;
   if (files.length !== 1) throw new Error('项目根目录下有多个 .ioc，请单独打开要操作的工程。');
   const ioc = await fs.readFile(path.join(cwd, files[0]), 'utf8');
-  const model = /^Mcu\.CPN[ \t]*=[ \t]*(\w+)[ \t]*\r?$/m.exec(ioc)?.[1]?.toUpperCase();
-  if (!model || !Object.hasOwn(chips, model)) {
-    throw new Error(`暂不支持 ${model || '未声明完整芯片型号的工程'}。`);
+  const configuredModel = /^Mcu\.CPN[ \t]*=([^\r\n]*)/m.exec(ioc)?.[1].trim()
+    || /^Mcu\.UserName[ \t]*=([^\r\n]*)/m.exec(ioc)?.[1].trim();
+  const model = configuredModel?.toUpperCase();
+  const chip = resolveChip(model);
+  if (!chip) {
+    throw new Error(`暂不支持 ${model || '未声明芯片型号和 Flash 容量的工程'}。请查看支持列表。`);
   }
   const makefile = await fs.readFile(path.join(cwd, 'Makefile'), 'utf8');
   const target = /^TARGET[ \t]*[?:]?=[ \t]*([\w.-]+)[ \t]*\r?$/m.exec(makefile)?.[1];
@@ -24,7 +22,7 @@ async function loadProject(folder) {
     throw new Error('未找到受支持的 CubeMX Makefile TARGET / BUILD_DIR。');
   }
   const baud = Number(/^USART\d+\.BaudRate[ \t]*=[ \t]*(\d{3,7})[ \t]*\r?$/m.exec(ioc)?.[1]);
-  return { folder, cwd, model, chip: chips[model], elf: `${buildDir}/${target}.elf`, baud: baud >= 100 ? baud : 115200 };
+  return { folder, cwd, model, chip, elf: `${buildDir}/${target}.elf`, baud: baud >= 100 ? baud : 115200 };
 }
 
 function classifyDevices(entries) {
@@ -92,7 +90,9 @@ function configLines(probe, chip) {
     `source [find interface/${interfaceName}.cfg]`,
     ...(probe.serial ? [`adapter serial ${probe.serial}`] : []),
     `transport select ${transport}`,
+    ...(chip.workAreaSize ? [`set WORKAREASIZE ${chip.workAreaSize}`] : []),
     `source [find target/${chip.config}.cfg]`,
+    ...(chip.workAreaAddress ? [`[target current] configure -work-area-phys ${chip.workAreaAddress}`] : []),
     'adapter speed 1000'
   ];
 }
@@ -100,10 +100,11 @@ function configLines(probe, chip) {
 function checkScript({ chip, model }) {
   return [
     'init',
-    'set deviceId [expr {[lindex [read_memory 0xe0042000 32 1] 0] & 0xfff}]',
+    `set deviceId [expr {[lindex [read_memory ${chip.idAddress} 32 1] 0] & 0xfff}]`,
+    `if {$deviceId != ${chip.id}} { error [format {STM32 mismatch: expected ${model} DEV_ID=0x${chip.id.toString(16)}, detected 0x%03x. No flash was written.} $deviceId] }`,
     `set flashKiB [lindex [read_memory ${chip.flashAddress} 16 1] 0]`,
     'echo [format {STM32 detected: DEV_ID=0x%03x Flash=%d KiB} $deviceId $flashKiB]',
-    `if {($deviceId != ${chip.id}) || ($flashKiB != ${chip.kib})} { error {STM32 mismatch: expected ${model}, DEV_ID=0x${chip.id.toString(16)}, Flash=${chip.kib} KiB. No flash was written.} }`
+    `if {$flashKiB != ${chip.kib}} { error {STM32 mismatch: expected ${model}, Flash=${chip.kib} KiB. No flash was written.} }`
   ].join('; ');
 }
 

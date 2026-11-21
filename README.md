@@ -20,18 +20,25 @@ STM32 Quick Tools 是一个面向 Windows 的 VS Code 扩展，目前处于预�
 
 ## 当前支持的硬件
 
-| MCU 型号 | OpenOCD 目标配置 | 验证情况 |
+| 系列 | 代表型号 | OpenOCD 目标配置 |
 | --- | --- | --- |
-| `STM32F103C8T6` | `target/stm32f1x.cfg` | 已用 CMSIS-DAP 实测 SWD 连接；示例工程已通过底层工具链烧录并输出串口日志。 |
-| `STM32F407VGT6` | `target/stm32f4x.cfg` | 已配置支持，待实板验证烧录。 |
-| `STM32F407ZGT6` | `target/stm32f4x.cfg` | 已配置支持，待实板验证烧录。 |
+| C0 | C011、C031、C071 | `stm32c0x.cfg` |
+| F0 / F1 / F2 / F3 | F030、F072；F103、F107；F205、F207；F303、F334 | `stm32f0x.cfg`、`stm32f1x.cfg`（XL 容量用 `stm32xl.cfg`）、`stm32f2x.cfg`、`stm32f3x.cfg` |
+| F4 / F7 | F401、F407、F411、F429、F446；F746、F767 | `stm32f4x.cfg`、`stm32f7x.cfg` |
+| G0 / G4 | G031、G071、G0B1；G431、G474 | `stm32g0x.cfg`、`stm32g4x.cfg` |
+| H7（单核） | H723、H743、H750、H753、H7A3 | `stm32h7x.cfg` 或 `stm32h7x_dual_bank.cfg` |
+| L0 / L4 | L031、L072；L432、L476、L496 | `stm32l0.cfg` 或 `stm32l0_dual_bank.cfg`、`stm32l4x.cfg` |
+| U0 / U5 | U031、U083；U535、U575、U585 | `stm32u0x.cfg`、`stm32u5x.cfg` |
+| WL（单核） | WLE4、WLE5 | `stm32wlx.cfg` |
+
+表内是代表型号，不等于支持整个系列。完整规则见 [chips.js](chips.js)。`STM32F103C8T6 + DAPLink` 已实测 SWD 连接；示例工程已通过底层工具链烧录并输出串口日志。其他型号已核对配置，尚未逐款实板烧录。当前烧录流程面向普通内部 Flash 工程，不覆盖双核、TrustZone 分区和外部 Flash 工作流。
 
 | 下载器 | OpenOCD 接口配置 | 验证情况 |
 | --- | --- | --- |
 | CMSIS-DAP（含 DAPLink） | `interface/cmsis-dap.cfg` | 已实测一款 DAPLink 的探针识别、SWD 连接和虚拟串口配对。 |
 | ST-LINK 系列 | `interface/stlink.cfg` | 已配置支持；需要探针固件与 OpenOCD 支持 `dapdirect_swd`，尚未实测各型号。 |
 
-扩展从 `.ioc` 读取完整型号，烧录前通过 SWD 检查芯片系列 ID 和 Flash 容量。两款 F407 共用目标配置，SWD 检查不能区分这两种封装，烧录前需手动确认。
+扩展优先读取 `.ioc` 的 `Mcu.CPN`，旧版工程可回退到 `Mcu.UserName`。烧录前通过 SWD 核对芯片组 ID 和 Flash 容量；这两项不能验证封装或完整料号，请确认板上丝印与工程一致。未收录的型号不会套用相近配置。OpenOCD 需包含该型号对应的目标脚本和 Flash 驱动，建议使用 xPack OpenOCD 0.12.0-7 或兼容版本。
 
 ## 快速上手
 
@@ -43,7 +50,7 @@ STM32 Quick Tools 是一个面向 Windows 的 VS Code 扩展，目前处于预�
    openocd --version
    ```
 
-2. 从 [v0.1.1 发布页](https://github.com/allay-12/stm32-quick-tools/releases/tag/v0.1.1) 的 **Assets** 下载 `stm32-quick-tools-0.1.1.vsix`。在 VS Code 按 `Ctrl+Shift+P`，运行 **Extensions: Install from VSIX...** 并选择该文件。
+2. 从 [GitHub Releases](https://github.com/allay-12/stm32-quick-tools/releases) 的 **Assets** 下载所需版本的 `.vsix`。在 VS Code 按 `Ctrl+Shift+P`，运行 **Extensions: Install from VSIX...** 并选择该文件。
 3. 在 STM32CubeMX 选择支持的 MCU，启用 `SYS → Debug → Serial Wire`，在 `Project Manager` 里将工具链设为 `Makefile`，然后生成代码。用 VS Code 打开同时包含 `.ioc` 和 `Makefile` 的工程根目录，并在确认来源可信后信任该工作区。
 4. 连接下载器和目标板的 `SWDIO`、`SWCLK`、`GND`，给目标板正常供电。确认状态栏显示正确的芯片和下载器，点击 **烧录**。校验通过后目标板会复位并运行，无需按 `F5`。
 5. 如果固件已配置 UART 日志，把开发板的 UART TX 接到下载器或 USB 转串口模块的 RX，并共地。确认状态栏的 COM 口和波特率后，点击 **监视**，在「STM32 串口」输出面板查看日志。

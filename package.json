@@ -2,8 +2,9 @@
   "name": "stm32-quick-tools",
   "displayName": "STM32 Quick Tools",
   "description": "CubeMX Makefile projects: detect USB probes, build, flash, monitor and debug.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "local-stm32",
+  "repository": { "type": "git", "url": "https://github.com/allay-12/stm32-quick-tools.git" },
   "engines": { "vscode": "^1.90.0" },
   "categories": ["Other"],
   "extensionKind": ["ui"],
@@ -24,5 +25,5 @@
       { "command": "stm32Quick.debug", "title": "STM32: 断点调试" }
     ]
   },
-  "scripts": { "check": "node --check extension.js && node --check hardware.js" }
+  "scripts": { "check": "node --check extension.js && node --check hardware.js && node --check chips.js" }
 }
